@@ -18,15 +18,19 @@ function ServiceDetailsContent() {
   const { data: session, isPending } = authClient.useSession();
 
   const [service, setService] = useState<Service | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Id of the service whose result is rendered; until it matches the route we
+  // show the loader — no setState is needed inside the effect.
+  const [loadedId, setLoadedId] = useState<string | null>(null);
+  const loading = loadedId !== id;
 
   const role = String((session?.user as { role?: string } | undefined)?.role || "customer");
 
+  // Fetches only touch state inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect). `cancelled`
+  // discards stale responses when the route id changes.
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError("");
 
     fetch(`${API_BASE}/api/services/${id}`)
       .then(async (res) => {
@@ -34,13 +38,15 @@ function ServiceDetailsContent() {
         if (!res.ok || data?.success === false) {
           throw new Error(data?.message || "Service not found.");
         }
-        if (!cancelled) setService(data.service as Service);
+        if (cancelled) return;
+        setService(data.service as Service);
+        setError("");
+        setLoadedId(id);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Service not found.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Service not found.");
+        setLoadedId(id);
       });
 
     return () => {

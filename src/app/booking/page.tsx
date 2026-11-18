@@ -28,26 +28,23 @@ function BookingContent() {
   const [submitted, setSubmitted] = useState(false);
 
   const [serviceId, setServiceId] = useState(requestedServiceId);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  // Drafts stay null until the user edits a field; the session value is used
+  // as the fallback, so identity is prefilled without a set-state effect.
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const [emailDraft, setEmailDraft] = useState<string | null>(null);
+  const [phoneDraft, setPhoneDraft] = useState<string | null>(null);
   const [address, setAddress] = useState("");
   const [preferredDate, setPreferredDate] = useState("");
   const [problem, setProblem] = useState("");
   const [formError, setFormError] = useState("");
 
-  const role = String((session?.user as { role?: string } | undefined)?.role || "customer");
-  const isBlockedRole = role === "technician" || role === "admin";
+  const sessionUser = session?.user;
+  const name = nameDraft ?? sessionUser?.name ?? "";
+  const email = emailDraft ?? sessionUser?.email ?? "";
+  const phone = phoneDraft ?? String((sessionUser as { phone?: string } | undefined)?.phone || "");
 
-  // Prefill identity from the verified session.
-  useEffect(() => {
-    if (!session?.user) return;
-    setName((current) => current || session.user.name || "");
-    setEmail((current) => current || session.user.email || "");
-    setPhone(
-      (current) => current || String((session.user as { phone?: string }).phone || "")
-    );
-  }, [session]);
+  const role = String((sessionUser as { role?: string } | undefined)?.role || "customer");
+  const isBlockedRole = role === "technician" || role === "admin";
 
   useEffect(() => {
     if (sessionPending) return;
@@ -89,12 +86,6 @@ function BookingContent() {
     [services, serviceId]
   );
 
-  const minDate = useMemo(() => {
-    const date = new Date(Date.now() + 60 * 60 * 1000);
-    const pad = (value: number) => String(value).padStart(2, "0");
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:00`;
-  }, []);
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError("");
@@ -132,7 +123,7 @@ function BookingContent() {
 
       setSubmitted(true);
       toast.success("Your repair request has been submitted!");
-      setPhone("");
+      setPhoneDraft(null);
       setAddress("");
       setPreferredDate("");
       setProblem("");
@@ -282,7 +273,7 @@ function BookingContent() {
               <input
                 id="booking-name"
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) => setNameDraft(event.target.value)}
                 className="input"
                 placeholder="Your full name"
                 required
@@ -297,7 +288,7 @@ function BookingContent() {
                 id="booking-email"
                 type="email"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => setEmailDraft(event.target.value)}
                 className="input"
                 placeholder="you@example.com"
                 required
@@ -312,7 +303,7 @@ function BookingContent() {
                 id="booking-phone"
                 type="tel"
                 value={phone}
-                onChange={(event) => setPhone(event.target.value)}
+                onChange={(event) => setPhoneDraft(event.target.value)}
                 className="input"
                 placeholder="+880 1XXXXXXXXX"
                 required
@@ -327,7 +318,6 @@ function BookingContent() {
                 id="booking-date"
                 type="datetime-local"
                 value={preferredDate}
-                min={minDate}
                 onChange={(event) => setPreferredDate(event.target.value)}
                 className="input"
                 required

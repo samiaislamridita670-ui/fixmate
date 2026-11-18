@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import { Suspense, useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { API_BASE } from "@/lib/api";
 import { SERVICE_CATEGORIES, SERVICE_MODES } from "@/lib/constants";
@@ -25,14 +24,18 @@ function ServicesContent() {
   const searchParams = useSearchParams();
 
   const [services, setServices] = useState<Service[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Key of the query whose results are currently rendered; until it matches the
+  // active query we show the skeleton — no setState needed inside the effect.
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState(searchParams.get("search") || "");
 
   const search = searchParams.get("search") || "";
   const category = searchParams.get("category") || "All";
   const serviceMode = searchParams.get("serviceMode") || "All";
   const sort = searchParams.get("sort") || "newest";
+  const queryKey = `${search}|${category}|${serviceMode}|${sort}`;
+  const loading = loadedKey !== queryKey;
 
   const buildQuery = useCallback(
     (overrides: Record<string, string>) => {
@@ -59,41 +62,47 @@ function ServicesContent() {
     [buildQuery, router]
   );
 
+  // All setState calls happen inside promise callbacks, so invoking this from
+  // the effect never sets state synchronously (react-hooks/set-state-in-effect).
+  // `isCancelled` lets the effect discard stale responses after the query changes.
+  const loadServices = useCallback(
+    (isCancelled: () => boolean) => {
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (category && category !== "All") params.set("category", category);
+      if (serviceMode && serviceMode !== "All") params.set("serviceMode", serviceMode);
+      if (sort) params.set("sort", sort);
+
+      const queryString = params.toString();
+
+      return fetch(`${API_BASE}/api/services${queryString ? `?${queryString}` : ""}`)
+        .then(async (res) => {
+          const data = await res.json().catch(() => null);
+          if (!res.ok || data?.success === false) {
+            throw new Error(data?.message || "Could not load services.");
+          }
+          if (isCancelled()) return;
+          setServices(Array.isArray(data?.services) ? data.services : []);
+          setError("");
+          setLoadedKey(queryKey);
+        })
+        .catch((err: unknown) => {
+          if (isCancelled()) return;
+          setServices([]);
+          setError(err instanceof Error ? err.message : "Could not load services.");
+          setLoadedKey(queryKey);
+        });
+    },
+    [search, category, serviceMode, sort, queryKey]
+  );
+
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError("");
-
-    const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    if (category && category !== "All") params.set("category", category);
-    if (serviceMode && serviceMode !== "All") params.set("serviceMode", serviceMode);
-    if (sort) params.set("sort", sort);
-
-    const queryString = params.toString();
-
-    fetch(`${API_BASE}/api/services${queryString ? `?${queryString}` : ""}`)
-      .then(async (res) => {
-        const data = await res.json().catch(() => null);
-        if (!res.ok || data?.success === false) {
-          throw new Error(data?.message || "Could not load services.");
-        }
-        if (cancelled) return;
-        setServices(Array.isArray(data?.services) ? data.services : []);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setServices([]);
-        setError(err instanceof Error ? err.message : "Could not load services.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
+    void loadServices(() => cancelled);
     return () => {
       cancelled = true;
     };
-  }, [search, category, serviceMode, sort]);
+  }, [loadServices]);
 
   return (
     <main className="flex-1">
@@ -260,7 +269,11 @@ function ServicesContent() {
             <ErrorState
               title="Unable to load services"
               description={`${error} Make sure the FixMate API server is running.`}
-              onRetry={() => router.refresh()}
+              onRetry={() => {
+                setError("");
+                setLoadedKey(null);
+                void loadServices(() => false);
+              }}
             />
           ) : services.length === 0 ? (
             <EmptyState
