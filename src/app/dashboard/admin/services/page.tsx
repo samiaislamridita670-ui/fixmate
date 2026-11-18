@@ -18,18 +18,24 @@ export default function AdminServicesPage() {
   const [filter, setFilter] = useState<"all" | ApprovalStatus>("all");
   const [search, setSearch] = useState("");
 
-  const loadServices = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await api.get<{ services?: Service[] }>("/api/services/admin/all");
-      setServices(data.services || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load services.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Loader touches state only inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect).
+  const loadServices = useCallback(
+    () =>
+      api
+        .get<{ services?: Service[] }>("/api/services/admin/all")
+        .then((data) => {
+          setServices(data.services || []);
+          setError("");
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Could not load services.");
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    []
+  );
 
   useEffect(() => {
     loadServices();
@@ -115,7 +121,16 @@ export default function AdminServicesPage() {
         </div>
       </div>
 
-      {error && <ErrorState description={error} onRetry={loadServices} />}
+      {error && (
+        <ErrorState
+          description={error}
+          onRetry={() => {
+            setError("");
+            setLoading(true);
+            void loadServices();
+          }}
+        />
+      )}
 
       {loading ? (
         <div className="card p-2">

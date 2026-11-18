@@ -21,18 +21,24 @@ export default function AdminApprovalsPage() {
   const [target, setTarget] = useState<{ service: Service; status: ApprovalStatus } | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const loadPending = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await api.get<{ services?: Service[] }>("/api/services/admin/pending");
-      setServices(data.services || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load pending services.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Loader touches state only inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect).
+  const loadPending = useCallback(
+    () =>
+      api
+        .get<{ services?: Service[] }>("/api/services/admin/pending")
+        .then((data) => {
+          setServices(data.services || []);
+          setError("");
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Could not load pending services.");
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    []
+  );
 
   useEffect(() => {
     loadPending();
@@ -76,7 +82,16 @@ export default function AdminApprovalsPage() {
         </Link>
       </div>
 
-      {error && <ErrorState description={error} onRetry={loadPending} />}
+      {error && (
+        <ErrorState
+          description={error}
+          onRetry={() => {
+            setError("");
+            setLoading(true);
+            void loadPending();
+          }}
+        />
+      )}
 
       {loading ? (
         <div className="card p-2">

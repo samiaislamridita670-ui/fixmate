@@ -6,7 +6,6 @@ import { api } from "@/lib/api";
 import { formatDate, ROLE_META } from "@/lib/constants";
 import type { AppUser, Role } from "@/lib/types";
 import { RoleBadge } from "@/components/ui/Badge";
-import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/ui/Feedback";
 import { useToast } from "@/components/Toast";
@@ -27,18 +26,24 @@ export default function AdminUsersPage() {
 
   const currentUserId = String(session?.user?.id || "");
 
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await api.get<{ users?: AppUser[] }>("/api/users");
-      setUsers(data.users || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load users.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Loader touches state only inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect).
+  const loadUsers = useCallback(
+    () =>
+      api
+        .get<{ users?: AppUser[] }>("/api/users")
+        .then((data) => {
+          setUsers(data.users || []);
+          setError("");
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Could not load users.");
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    []
+  );
 
   useEffect(() => {
     loadUsers();
@@ -133,7 +138,16 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      {error && <ErrorState description={error} onRetry={loadUsers} />}
+      {error && (
+        <ErrorState
+          description={error}
+          onRetry={() => {
+            setError("");
+            setLoading(true);
+            void loadUsers();
+          }}
+        />
+      )}
 
       <div className="table-shell">
         {loading ? (

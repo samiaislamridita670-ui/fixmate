@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { BOOKING_STATUS_META, formatDate, formatMoney } from "@/lib/constants";
+import { formatDate, formatMoney } from "@/lib/constants";
 import type { Booking, BookingStatus } from "@/lib/types";
 import { StatusBadge, PaymentBadge } from "@/components/ui/Badge";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/ui/Feedback";
@@ -24,18 +24,24 @@ export default function AdminBookingsPage() {
   const [status, setStatus] = useState<BookingStatus | "all">("all");
   const [search, setSearch] = useState("");
 
-  const loadBookings = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await api.get<{ bookings?: Booking[] }>("/api/bookings/all");
-      setBookings(data.bookings || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load bookings.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Loader touches state only inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect).
+  const loadBookings = useCallback(
+    () =>
+      api
+        .get<{ bookings?: Booking[] }>("/api/bookings/all")
+        .then((data) => {
+          setBookings(data.bookings || []);
+          setError("");
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Could not load bookings.");
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    []
+  );
 
   useEffect(() => {
     loadBookings();
@@ -108,7 +114,16 @@ export default function AdminBookingsPage() {
         </div>
       </div>
 
-      {error && <ErrorState description={error} onRetry={loadBookings} />}
+      {error && (
+        <ErrorState
+          description={error}
+          onRetry={() => {
+            setError("");
+            setLoading(true);
+            void loadBookings();
+          }}
+        />
+      )}
 
       <div className="table-shell">
         {loading ? (

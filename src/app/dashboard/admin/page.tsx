@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/constants";
 import { StatusBadge } from "@/components/ui/Badge";
 import StatCard from "@/components/ui/StatCard";
-import { EmptyState, ErrorState, StatCardSkeleton, TableSkeleton } from "@/components/ui/Feedback";
+import { EmptyState, ErrorState, StatCardSkeleton } from "@/components/ui/Feedback";
 import BarChart from "@/components/BarChart";
 import type { Booking } from "@/lib/types";
 
@@ -31,21 +31,25 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const loadStats = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await api.get<AdminStats & { recentBookings?: Booking[] }>(
-        "/api/admin/stats"
-      );
-      setStats(data);
-      setRecentBookings(data.recentBookings || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load admin statistics.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Loader touches state only inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect).
+  const loadStats = useCallback(
+    () =>
+      api
+        .get<AdminStats & { recentBookings?: Booking[] }>("/api/admin/stats")
+        .then((data) => {
+          setStats(data);
+          setRecentBookings(data.recentBookings || []);
+          setError("");
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Could not load admin statistics.");
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    []
+  );
 
   useEffect(() => {
     loadStats();
@@ -75,7 +79,16 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {error && <ErrorState description={error} onRetry={loadStats} />}
+      {error && (
+        <ErrorState
+          description={error}
+          onRetry={() => {
+            setError("");
+            setLoading(true);
+            void loadStats();
+          }}
+        />
+      )}
 
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

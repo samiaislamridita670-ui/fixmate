@@ -9,31 +9,65 @@ import StatCard from "@/components/ui/StatCard";
 import { EmptyState, ErrorState, StatCardSkeleton, TableSkeleton } from "@/components/ui/Feedback";
 import BarChart from "@/components/BarChart";
 
+/** Buckets payments into the last 7 days for the revenue chart. */
+function groupRevenueByDay(payments: Payment[]): { label: string; value: number; color: string }[] {
+  const now = Date.now();
+  const buckets = new Map<string, number>();
+  for (let i = 6; i >= 0; i--) {
+    const day = new Date(now - i * 24 * 60 * 60 * 1000);
+    buckets.set(day.toLocaleDateString("en-GB", { day: "numeric", month: "short" }), 0);
+  }
+  for (const payment of payments) {
+    const when = new Date(payment.paidAt);
+    if (Number.isNaN(when.getTime())) continue;
+    const key = when.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    if (buckets.has(key)) {
+      buckets.set(key, (buckets.get(key) || 0) + Number(payment.amount || 0));
+    }
+  }
+  return Array.from(buckets, ([label, value]) => ({
+    label,
+    value: Math.round(value * 100) / 100,
+    color: "bg-violet-500",
+  }));
+}
+
 export default function AdminTransactionsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  // Revenue grouped by day (last 7 days) for the chart. Filled when the data
+  // arrives — never computed during render, which keeps Date.now() out of it.
+  const [revenueByDay, setRevenueByDay] = useState<
+    { label: string; value: number; color: string }[]
+  >([]);
 
-  const loadPayments = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await api.get<{ payments?: Payment[]; totalRevenue?: number }>(
-        "/api/payments"
-      );
-      setPayments(data.payments || []);
-      setTotalRevenue(
-        data.totalRevenue ??
-          (data.payments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load transactions.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Loader touches state only inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect).
+  const loadPayments = useCallback(
+    () =>
+      api
+        .get<{ payments?: Payment[]; totalRevenue?: number }>("/api/payments")
+        .then((data) => {
+          const list = data.payments || [];
+          setPayments(list);
+          setTotalRevenue(
+            data.totalRevenue ??
+              list.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+          );
+          setRevenueByDay(groupRevenueByDay(list));
+          setError("");
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Could not load transactions.");
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    []
+  );
 
   useEffect(() => {
     loadPayments();
@@ -49,29 +83,6 @@ export default function AdminTransactionsPage() {
       payment.transactionId.toLowerCase().includes(term)
     );
   });
-
-  // Revenue grouped by day (last 30 days) for the chart.
-  const revenueByDay = (() => {
-    const now = Date.now();
-    const buckets = new Map<string, number>();
-    for (let i = 6; i >= 0; i--) {
-      const day = new Date(now - i * 24 * 60 * 60 * 1000);
-      buckets.set(day.toLocaleDateString("en-GB", { day: "numeric", month: "short" }), 0);
-    }
-    for (const payment of payments) {
-      const when = new Date(payment.paidAt);
-      if (Number.isNaN(when.getTime())) continue;
-      const key = when.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-      if (buckets.has(key)) {
-        buckets.set(key, (buckets.get(key) || 0) + Number(payment.amount || 0));
-      }
-    }
-    return Array.from(buckets, ([label, value]) => ({
-      label,
-      value: Math.round(value * 100) / 100,
-      color: "bg-violet-500",
-    }));
-  })();
 
   const byTechnician = (() => {
     const map = new Map<string, number>();
@@ -124,7 +135,16 @@ export default function AdminTransactionsPage() {
         </div>
       )}
 
-      {error && <ErrorState description={error} onRetry={loadPayments} />}
+      {error && (
+        <ErrorState
+          description={error}
+          onRetry={() => {
+            setError("");
+            setLoading(true);
+            void loadPayments();
+          }}
+        />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <BarChart title="Revenue (last 7 active days)" data={revenueByDay} suffix="" emptyLabel="No payments yet." />
