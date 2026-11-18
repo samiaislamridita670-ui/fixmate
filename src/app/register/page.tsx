@@ -253,6 +253,9 @@ function RegisterContent() {
                   </li>
                 ))}
               </ul>
+              {touched && passwordError && (
+                <p className="mt-2 text-xs font-semibold text-red-600">{passwordError}</p>
+              )}
             </div>
 
             {error && (

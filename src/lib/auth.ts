@@ -19,16 +19,17 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export const auth = betterAuth({
-  database: mongodbAdapter(client.db()),
+  database: mongodbAdapter(client.db(), { usePlural: true }),
   baseURL: process.env.BETTER_AUTH_URL,
   secret: process.env.BETTER_AUTH_SECRET,
   emailAndPassword: {
-    enabled: true
+    enabled: true,
+    minPasswordLength: 6
   },
   user: {
     additionalFields: {
       role: {
-        type: ["customer", "technician"],
+        type: ["customer", "technician", "admin"],
         required: true,
         defaultValue: "customer",
         input: true
@@ -47,6 +48,21 @@ export const auth = betterAuth({
         type: "string",
         required: false,
         input: true
+      }
+    }
+  },
+  databaseHooks: {
+    user: {
+      create: {
+        // BetterAuth expects this hook to return a Promise; `async` provides it
+        // while keeping the same sanitising behaviour as before.
+        before: async (user) => {
+          // Self-registration may only ever produce customer or technician.
+          // Admin accounts are promoted by an existing admin at runtime.
+          const role = String((user as { role?: string }).role || "customer");
+          const safeRole = role === "technician" ? "technician" : "customer";
+          return { data: { ...user, role: safeRole } };
+        }
       }
     }
   },
