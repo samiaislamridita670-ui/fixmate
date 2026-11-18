@@ -6,7 +6,7 @@ import { requireAuth, allowRoles, type AuthRequest } from "../middleware/auth.js
 
 const router = Router();
 
-const ACTIVE_STATUSES = ["requested", "accepted", "in-progress"];
+const ACTIVE_STATUSES = ["requested", "accepted", "in-progress"] as const;
 
 router.post("/", requireAuth, allowRoles("customer"), async (req: AuthRequest, res) => {
   try {
@@ -39,10 +39,10 @@ router.post("/", requireAuth, allowRoles("customer"), async (req: AuthRequest, r
       return res.status(400).json({ success: false, message: "Please select a valid future date." });
     }
 
-    const existingBooking = await (Booking as any).findOne({
+    const existingBooking = await Booking.findOne({
       serviceId: String(service._id),
       customerEmail: req.user!.email.toLowerCase(),
-      status: { $in: ACTIVE_STATUSES }
+      status: { $in: [...ACTIVE_STATUSES] }
     });
 
     if (existingBooking) {
@@ -79,7 +79,7 @@ router.get("/mine", requireAuth, allowRoles("customer"), async (req: AuthRequest
   try {
     const bookings = await Booking.find({ customerEmail: req.user!.email.toLowerCase() }).sort({ createdAt: -1 });
     return res.json({ success: true, bookings });
-  } catch (error) {
+  } catch {
     return res.status(500).json({ success: false, message: "Could not load bookings." });
   }
 });
@@ -88,8 +88,47 @@ router.get("/assigned", requireAuth, allowRoles("technician"), async (req: AuthR
   try {
     const bookings = await Booking.find({ technicianEmail: req.user!.email.toLowerCase() }).sort({ createdAt: -1 });
     return res.json({ success: true, bookings });
-  } catch (error) {
+  } catch {
     return res.status(500).json({ success: false, message: "Could not load assigned bookings." });
+  }
+});
+
+// Admin: every booking on the platform
+router.get("/all", requireAuth, allowRoles("admin"), async (_req, res) => {
+  try {
+    const bookings = await Booking.find({}).sort({ createdAt: -1 });
+    return res.json({ success: true, count: bookings.length, bookings });
+  } catch {
+    return res.status(500).json({ success: false, message: "Could not load bookings." });
+  }
+});
+
+// Booking details — customer sees their own, technician sees assigned, admin sees any
+router.get("/:id", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const id = String(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid booking ID." });
+    }
+
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Booking not found." });
+    }
+
+    const email = req.user!.email.toLowerCase();
+    const isCustomer = booking.customerEmail === email;
+    const isTechnician = booking.technicianEmail === email;
+    const isAdmin = req.user!.role === "admin";
+
+    if (!isCustomer && !isTechnician && !isAdmin) {
+      return res.status(403).json({ success: false, message: "You do not have access to this booking." });
+    }
+
+    return res.json({ success: true, booking });
+  } catch (error) {
+    console.error("Booking details error:", error);
+    return res.status(500).json({ success: false, message: "Could not load the booking." });
   }
 });
 
@@ -159,7 +198,7 @@ router.patch("/:id/cancel", requireAuth, allowRoles("customer"), async (req: Aut
     await booking.save();
 
     return res.json({ success: true, message: "Booking cancelled.", booking });
-  } catch (error) {
+  } catch {
     return res.status(500).json({ success: false, message: "Could not cancel booking." });
   }
 });

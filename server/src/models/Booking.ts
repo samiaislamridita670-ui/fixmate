@@ -36,7 +36,7 @@ const bookingSchema = new Schema<IBooking>({
   preferredDate: { type: Date, required: true },
   problemDescription: { type: String, required: true, minlength: 20 },
   status: { type: String, enum: BOOKING_STATUSES, default: "requested" },
-  finalAmount: { type: Number, required: true, min: 0, default: function (this: any) { return this.basePrice; } },
+  finalAmount: { type: Number, required: true, min: 0, default: function (this: IBooking) { return this.basePrice; } },
   paymentStatus: { type: String, enum: ["unpaid", "paid"], default: "unpaid" }
 }, { timestamps: true });
 
