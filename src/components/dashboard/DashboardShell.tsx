@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
-import { dashboardPathForRole, initials } from "@/lib/constants";
+import { initials } from "@/lib/constants";
 import type { Role } from "@/lib/types";
 
 interface NavItem {
@@ -54,17 +54,17 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { data: session, isPending } = authClient.useSession();
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const user = session?.user ?? null;
   const role = (String((user as { role?: string } | null)?.role || "customer") as Role);
   const navItems = navForRole(role);
 
-  useEffect(() => {
-    setDrawerOpen(false);
-    setMenuOpen(false);
-  }, [pathname]);
+  // Drawers remember the path they were opened on; a route change makes the
+  // derived flag false — no setState effect needed on navigation.
+  const [drawerPath, setDrawerPath] = useState<string | null>(null);
+  const [menuPath, setMenuPath] = useState<string | null>(null);
+  const drawerOpen = drawerPath === pathname;
+  const menuOpen = menuPath === pathname;
 
   useEffect(() => {
     if (isPending) return;
@@ -163,13 +163,13 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           <div className="fixed inset-0 z-[60] lg:hidden">
             <div
               className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
-              onClick={() => setDrawerOpen(false)}
+              onClick={() => setDrawerPath(null)}
               aria-hidden="true"
             />
             <div className="fade-up absolute inset-y-0 left-0 w-72 bg-slate-950 shadow-2xl">
               <button
                 type="button"
-                onClick={() => setDrawerOpen(false)}
+                onClick={() => setDrawerPath(null)}
                 className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 hover:bg-white/10"
                 aria-label="Close menu"
               >
@@ -186,7 +186,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           <div className="sticky top-16 z-40 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
             <button
               type="button"
-              onClick={() => setDrawerOpen(true)}
+              onClick={() => setDrawerPath(pathname)}
               className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700"
               aria-label="Open dashboard menu"
             >
@@ -198,7 +198,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
             <div className="relative">
               <button
                 type="button"
-                onClick={() => setMenuOpen((open) => !open)}
+                onClick={() => setMenuPath(menuOpen ? null : pathname)}
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-xs font-black text-emerald-700"
                 aria-label="Account menu"
                 aria-expanded={menuOpen}
@@ -231,3 +231,4 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
+

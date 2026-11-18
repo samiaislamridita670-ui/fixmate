@@ -33,24 +33,24 @@ function NavbarContent() {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session, isPending } = authClient.useSession();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement | null>(null);
 
   const user = session?.user ?? null;
   const role = String((user as { role?: string } | null)?.role || "customer");
   const dashboardPath = dashboardPathForRole(role);
 
-  useEffect(() => {
-    setMenuOpen(false);
-    setProfileOpen(false);
-  }, [pathname]);
+  // Menus remember the path they were opened on; a route change makes the
+  // derived flag false — no setState effect needed on navigation.
+  const [menuPath, setMenuPath] = useState<string | null>(null);
+  const [profilePath, setProfilePath] = useState<string | null>(null);
+  const menuOpen = menuPath === pathname;
+  const profileOpen = profilePath === pathname;
 
   useEffect(() => {
     if (!profileOpen) return;
     const onDocumentClick = (event: MouseEvent) => {
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
-        setProfileOpen(false);
+        setProfilePath(null);
       }
     };
     document.addEventListener("mousedown", onDocumentClick);
@@ -69,8 +69,8 @@ function NavbarContent() {
     try {
       await authClient.signOut();
     } finally {
-      setProfileOpen(false);
-      setMenuOpen(false);
+      setProfilePath(null);
+      setMenuPath(null);
       router.push("/");
       router.refresh();
     }
@@ -115,7 +115,7 @@ function NavbarContent() {
             <div className="relative" ref={profileRef}>
               <button
                 type="button"
-                onClick={() => setProfileOpen((open) => !open)}
+                onClick={() => setProfilePath(profileOpen ? null : pathname)}
                 className="flex items-center gap-2 rounded-xl border border-slate-200 py-1.5 pl-1.5 pr-3 transition hover:border-slate-300 hover:bg-slate-50"
                 aria-haspopup="menu"
                 aria-expanded={profileOpen}
@@ -181,7 +181,7 @@ function NavbarContent() {
         <button
           type="button"
           className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-700 transition hover:bg-slate-50 md:hidden"
-          onClick={() => setMenuOpen((open) => !open)}
+          onClick={() => setMenuPath(menuOpen ? null : pathname)}
           aria-label="Toggle navigation menu"
           aria-expanded={menuOpen}
         >
