@@ -20,20 +20,27 @@ export default function EditServicePage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const loadService = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await api.get<{ services?: Service[] }>("/api/services/mine");
-      const found = (data.services || []).find((item) => item._id === id);
-      if (!found) throw new Error("Service not found in your listings.");
-      setService(found);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load the service.");
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  // Loader touches state only inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect).
+  // Loading starts as true for the initial fetch.
+  const loadService = useCallback(
+    () =>
+      api
+        .get<{ services?: Service[] }>("/api/services/mine")
+        .then((data) => {
+          const found = (data.services || []).find((item) => item._id === id);
+          if (!found) throw new Error("Service not found in your listings.");
+          setService(found);
+          setError("");
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Could not load the service.");
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    [id]
+  );
 
   useEffect(() => {
     loadService();
@@ -68,7 +75,15 @@ export default function EditServicePage() {
   if (error || !service) {
     return (
       <div className="space-y-5">
-        <ErrorState title="Service not found" description={error} onRetry={loadService} />
+        <ErrorState
+          title="Service not found"
+          description={error}
+          onRetry={() => {
+            setError("");
+            setLoading(true);
+            void loadService();
+          }}
+        />
         <div className="flex justify-center">
           <Link href="/dashboard/technician/my-services" className="btn btn-outline">
             ← Back to my services

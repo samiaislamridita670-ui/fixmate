@@ -17,22 +17,28 @@ export default function TechnicianDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const [servicesData, requestsData] = await Promise.all([
+  // Loader touches state only inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect).
+  // Loading starts as true for the initial fetch.
+  const loadData = useCallback(
+    () =>
+      Promise.all([
         api.get<{ services?: Service[] }>("/api/services/mine"),
         api.get<{ bookings?: Booking[] }>("/api/bookings/assigned"),
-      ]);
-      setServices(servicesData.services || []);
-      setRequests(requestsData.bookings || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load your dashboard.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      ])
+        .then(([servicesData, requestsData]) => {
+          setServices(servicesData.services || []);
+          setRequests(requestsData.bookings || []);
+          setError("");
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Could not load your dashboard.");
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    []
+  );
 
   useEffect(() => {
     loadData();
@@ -97,7 +103,16 @@ export default function TechnicianDashboardPage() {
         </div>
       )}
 
-      {error && <ErrorState description={error} onRetry={loadData} />}
+      {error && (
+        <ErrorState
+          description={error}
+          onRetry={() => {
+            setError("");
+            setLoading(true);
+            void loadData();
+          }}
+        />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Requests */}

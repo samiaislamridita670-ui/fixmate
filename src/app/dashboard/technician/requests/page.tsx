@@ -34,18 +34,25 @@ export default function TechnicianRequestsPage() {
   const [amountError, setAmountError] = useState("");
   const [completing, setCompleting] = useState(false);
 
-  const loadBookings = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await api.get<{ bookings?: Booking[] }>("/api/bookings/assigned");
-      setBookings(data.bookings || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load requests.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Loader touches state only inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect).
+  // Loading starts as true for the initial fetch.
+  const loadBookings = useCallback(
+    () =>
+      api
+        .get<{ bookings?: Booking[] }>("/api/bookings/assigned")
+        .then((data) => {
+          setBookings(data.bookings || []);
+          setError("");
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Could not load requests.");
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    []
+  );
 
   useEffect(() => {
     loadBookings();
@@ -135,7 +142,16 @@ export default function TechnicianRequestsPage() {
         </div>
       </div>
 
-      {error && <ErrorState description={error} onRetry={loadBookings} />}
+      {error && (
+        <ErrorState
+          description={error}
+          onRetry={() => {
+            setError("");
+            setLoading(true);
+            void loadBookings();
+          }}
+        />
+      )}
 
       {loading ? (
         <div className="card p-2">

@@ -27,19 +27,26 @@ export default function TechnicianBookingDetailsPage() {
   const [finalAmount, setFinalAmount] = useState("");
   const [amountError, setAmountError] = useState("");
 
-  const loadBooking = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await api.get<{ booking?: Booking }>(`/api/bookings/${id}`);
-      if (!data?.booking) throw new Error("Booking not found.");
-      setBooking(data.booking);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load the request.");
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  // Loader touches state only inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect).
+  // Loading starts as true for the initial fetch.
+  const loadBooking = useCallback(
+    () =>
+      api
+        .get<{ booking?: Booking }>(`/api/bookings/${id}`)
+        .then((data) => {
+          if (!data?.booking) throw new Error("Booking not found.");
+          setBooking(data.booking);
+          setError("");
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Could not load the request.");
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    [id]
+  );
 
   useEffect(() => {
     loadBooking();
@@ -82,7 +89,15 @@ export default function TechnicianBookingDetailsPage() {
   if (error || !booking) {
     return (
       <div className="space-y-5">
-        <ErrorState title="Request not found" description={error} onRetry={loadBooking} />
+        <ErrorState
+          title="Request not found"
+          description={error}
+          onRetry={() => {
+            setError("");
+            setLoading(true);
+            void loadBooking();
+          }}
+        />
         <div className="flex justify-center">
           <Link href="/dashboard/technician/requests" className="btn btn-outline">
             ← Back to requests

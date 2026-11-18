@@ -20,18 +20,25 @@ export default function MyServicesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const loadServices = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await api.get<{ services?: Service[] }>("/api/services/mine");
-      setServices(data.services || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load your services.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Loader touches state only inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect).
+  // Loading starts as true for the initial fetch.
+  const loadServices = useCallback(
+    () =>
+      api
+        .get<{ services?: Service[] }>("/api/services/mine")
+        .then((data) => {
+          setServices(data.services || []);
+          setError("");
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Could not load your services.");
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    []
+  );
 
   useEffect(() => {
     loadServices();
@@ -101,7 +108,16 @@ export default function MyServicesPage() {
         </Link>
       </div>
 
-      {error && <ErrorState description={error} onRetry={loadServices} />}
+      {error && (
+        <ErrorState
+          description={error}
+          onRetry={() => {
+            setError("");
+            setLoading(true);
+            void loadServices();
+          }}
+        />
+      )}
 
       {loading ? (
         <div className="card p-2">
