@@ -18,12 +18,15 @@ function PaymentSuccessContent() {
   const [payment, setPayment] = useState<Payment | null>(null);
   const [detail, setDetail] = useState("");
 
+  // Render-time derivation: a missing session id shows the unavailable state
+  // without touching state inside the effect.
+  const verifyState: VerifyState = sessionId ? state : "unavailable";
+  const verifyDetail = sessionId
+    ? detail
+    : "No checkout session was provided with this page.";
+
   useEffect(() => {
-    if (!sessionId) {
-      setState("unavailable");
-      setDetail("No checkout session was provided with this page.");
-      return;
-    }
+    if (!sessionId) return;
 
     let cancelled = false;
     api
@@ -59,34 +62,34 @@ function PaymentSuccessContent() {
         <div className="card overflow-hidden text-center">
           <div
             className={`px-7 py-10 ${
-              state === "verified" || state === "already-paid"
+              verifyState === "verified" || verifyState === "already-paid"
                 ? "bg-emerald-600"
-                : state === "failed"
+                : verifyState === "failed"
                   ? "bg-red-600"
                   : "bg-slate-900"
             } text-white`}
           >
             <span className="text-5xl" aria-hidden="true">
-              {state === "verifying" ? "⏳" : state === "failed" ? "⚠️" : "✅"}
+              {verifyState === "verifying" ? "⏳" : verifyState === "failed" ? "⚠️" : "✅"}
             </span>
             <h1 className="mt-4 text-2xl font-black">
-              {state === "verifying" && "Verifying your payment…"}
-              {state === "verified" && "Payment successful!"}
-              {state === "already-paid" && "Payment received!"}
-              {state === "unavailable" && "Payment submitted"}
-              {state === "failed" && "Payment needs attention"}
+              {verifyState === "verifying" && "Verifying your payment…"}
+              {verifyState === "verified" && "Payment successful!"}
+              {verifyState === "already-paid" && "Payment received!"}
+              {verifyState === "unavailable" && "Payment submitted"}
+              {verifyState === "failed" && "Payment needs attention"}
             </h1>
             <p className="mt-2 text-sm text-white/80">
-              {state === "verified" || state === "already-paid"
+              {verifyState === "verified" || verifyState === "already-paid"
                 ? "Thank you — your receipt is ready."
-                : state === "verifying"
+                : verifyState === "verifying"
                   ? "Hang tight while we confirm the transaction with Stripe."
-                  : detail}
+                  : verifyDetail}
             </p>
           </div>
 
           <div className="p-7">
-            {state === "verifying" ? (
+            {verifyState === "verifying" ? (
               <div className="flex justify-center py-6">
                 <PageLoader label="Checking transaction…" />
               </div>
@@ -117,7 +120,7 @@ function PaymentSuccessContent() {
               </dl>
             ) : (
               <div className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                {detail ||
+                {verifyDetail ||
                   "Your payment will appear in your payment history as soon as the transaction is confirmed."}
               </div>
             )}
