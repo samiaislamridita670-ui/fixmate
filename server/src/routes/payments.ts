@@ -9,6 +9,93 @@ const router = Router();
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder");
 
+// Customer: payment history
+router.get("/mine", requireAuth, allowRoles("customer"), async (req: AuthRequest, res) => {
+  try {
+    const payments = await Payment.find({ customerEmail: req.user!.email.toLowerCase() })
+      .sort({ paidAt: -1 });
+    const totalRevenue = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    return res.json({ success: true, count: payments.length, totalRevenue, payments });
+  } catch (error) {
+    console.error("Payment history error:", error);
+    return res.status(500).json({ success: false, message: "Could not load payments." });
+  }
+});
+
+// Admin: every transaction
+router.get("/", requireAuth, allowRoles("admin"), async (_req, res) => {
+  try {
+    const payments = await Payment.find({}).sort({ paidAt: -1 });
+    const totalRevenue = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    return res.json({ success: true, count: payments.length, totalRevenue, payments });
+  } catch (error) {
+    console.error("Transactions error:", error);
+    return res.status(500).json({ success: false, message: "Could not load transactions." });
+  }
+});
+
+/**
+ * Customer-facing confirmation for the success page.
+ *
+ * Reads only: the session is fetched from Stripe with the secret key to
+ * confirm the payment really happened, then the stored Payment document
+ * (written exclusively by the signed webhook) is returned. This endpoint
+ * never marks a booking as paid itself.
+ */
+router.get("/verify", requireAuth, allowRoles("customer"), async (req: AuthRequest, res) => {
+  try {
+    const sessionId = String(req.query.session_id || "");
+
+    if (!sessionId) {
+      return res.status(400).json({ success: false, message: "Missing checkout session." });
+    }
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return res.status(503).json({ success: false, message: "Stripe is not configured." });
+    }
+
+    const existing = await Payment.findOne({ stripeSessionId: sessionId });
+    if (existing) {
+      if (existing.customerEmail !== req.user!.email.toLowerCase()) {
+        return res.status(403).json({ success: false, message: "This receipt belongs to another account." });
+      }
+      return res.json({ success: true, payment: existing });
+    }
+
+    // Confirm directly with Stripe, then give the signed webhook a moment
+    // to land — it is the only writer of payment records.
+    let stripeSession: Stripe.Checkout.Session;
+    try {
+      stripeSession = await stripe.checkout.sessions.retrieve(sessionId);
+    } catch {
+      return res.status(404).json({ success: false, message: "Checkout session not found." });
+    }
+
+    if (stripeSession.payment_status !== "paid") {
+      return res.status(402).json({ success: false, message: "This payment has not completed yet." });
+    }
+
+    const ownerEmail = String(stripeSession.metadata?.customerEmail || "").toLowerCase();
+    if (ownerEmail && ownerEmail !== req.user!.email.toLowerCase()) {
+      return res.status(403).json({ success: false, message: "This receipt belongs to another account." });
+    }
+
+    // The webhook normally lands within a second or two of checkout.
+    for (let attempt = 0; attempt < 10; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const payment = await Payment.findOne({ stripeSessionId: sessionId });
+      if (payment) return res.json({ success: true, payment });
+    }
+
+    return res.status(202).json({
+      success: false,
+      message: "Payment received — the receipt will appear shortly while we confirm the transaction.",
+    });
+  } catch (error) {
+    console.error("Payment verify error:", error);
+    return res.status(500).json({ success: false, message: "Could not verify the payment." });
+  }
+});
+
 router.post("/checkout/:bookingId", requireAuth, allowRoles("customer"), async (req: AuthRequest, res: Response) => {
   try {
     if (!process.env.STRIPE_SECRET_KEY) {
@@ -48,7 +135,6 @@ router.post("/checkout/:bookingId", requireAuth, allowRoles("customer"), async (
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      payment_method_types: ["card"],
       customer_email: booking.customerEmail,
       line_items: [{
         quantity: 1,
@@ -65,8 +151,8 @@ router.post("/checkout/:bookingId", requireAuth, allowRoles("customer"), async (
         bookingId: String(booking._id),
         customerEmail: booking.customerEmail
       },
-      success_url: `${clientUrl}/dashboard?payment=success`,
-      cancel_url: `${clientUrl}/dashboard?payment=cancelled`
+      success_url: `${clientUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${clientUrl}/payment/cancelled?session_id={CHECKOUT_SESSION_ID}`
     });
 
     return res.json({
@@ -121,6 +207,29 @@ export const stripeWebhook = async (req: Request, res: Response) => {
           return res.status(404).send("Booking not found.");
         }
 
+        const sessionEmail = String(
+          session.customer_details?.email || session.customer_email || ""
+        ).toLowerCase();
+        const metadataEmail = String(session.metadata?.customerEmail || "").toLowerCase();
+        const expectedAmount = Math.round(Number(booking.finalAmount) * 100);
+
+        if (
+          !sessionEmail ||
+          sessionEmail !== booking.customerEmail.toLowerCase() ||
+          metadataEmail !== booking.customerEmail.toLowerCase()
+        ) {
+          return res.status(400).send("Customer email verification failed.");
+        }
+
+        if (
+          session.currency !== "usd" ||
+          !Number.isFinite(expectedAmount) ||
+          expectedAmount <= 0 ||
+          session.amount_total !== expectedAmount
+        ) {
+          return res.status(400).send("Payment amount or currency mismatch.");
+        }
+
         if (booking.paymentStatus !== "paid") {
           const existingPayment = await Payment.findOne({
             $or: [
@@ -162,3 +271,4 @@ export const stripeWebhook = async (req: Request, res: Response) => {
 };
 
 export default router;
+
