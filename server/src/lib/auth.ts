@@ -13,16 +13,17 @@ if (!uri || !secret) {
 const client = new MongoClient(uri);
 
 export const auth = betterAuth({
-  database: mongodbAdapter(client.db("fixmate")),
+  database: mongodbAdapter(client.db("fixmate"), { usePlural: true }),
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3001",
   secret,
   emailAndPassword: {
-    enabled: true
+    enabled: true,
+    minPasswordLength: 6
   },
   user: {
     additionalFields: {
       role: {
-        type: ["customer", "technician"],
+        type: ["customer", "technician", "admin"],
         required: true,
         defaultValue: "customer",
         input: true
@@ -44,6 +45,18 @@ export const auth = betterAuth({
       }
     }
   },
+  databaseHooks: {
+    user: {
+      create: {
+        before: async (user) => {
+          // Self-registration may only ever produce customer or technician.
+          // Admin accounts are promoted by an existing admin at runtime.
+          const role = String((user as { role?: string }).role || "customer");
+          const safeRole = role === "technician" ? "technician" : "customer";
+          return { data: { ...user, role: safeRole } };
+        }
+      }
+    }
+  },
   trustedOrigins: ["http://localhost:3001"]
 });
-

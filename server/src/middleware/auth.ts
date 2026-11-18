@@ -1,59 +1,63 @@
 ﻿import type { Request, Response, NextFunction } from "express";
-import { fromNodeHeaders } from "better-auth/node";
-import { auth } from "../lib/auth.js";
+import { verifyAccessToken } from "../lib/jwt.js";
+import { findUserById, findUserByEmail, type AppUserRecord } from "../lib/users.js";
 
 export interface AuthRequest extends Request {
-  user?: {
-    id: string;
-    name: string;
-    email: string;
-    role: string;
-  };
+  user?: AppUserRecord;
 }
 
-export const requireAuth = async (
+/**
+ * Verifies the HS256 bearer token issued by `/api/token`, then re-reads
+ * the user from MongoDB so authorization always reflects the current
+ * database role (a demoted admin loses access immediately).
+ */
+export const verifyToken = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {
   try {
-    const session = await auth.api.getSession({
-      headers: fromNodeHeaders(req.headers)
-    });
+    const tokenUser = verifyAccessToken(req.headers.authorization);
 
-    if (!session) {
+    const user = (await findUserById(tokenUser.sub)) || (await findUserByEmail(tokenUser.email));
+
+    if (!user) {
       return res.status(401).json({
         success: false,
-        message: "Please login first."
+        message: "Account no longer exists. Please sign in again.",
       });
     }
 
-    req.user = {
-      id: session.user.id,
-      name: session.user.name,
-      email: session.user.email,
-      role: String(session.user.role || "customer")
-    };
-
+    req.user = user;
     next();
   } catch (error) {
-    console.error("Authentication error:", error);
-    return res.status(401).json({
-      success: false,
-      message: "Authentication failed."
-    });
+    const message =
+      error instanceof Error && /expired/i.test(error.message)
+        ? "Your session has expired. Please sign in again."
+        : "Please sign in to continue.";
+    return res.status(401).json({ success: false, message });
   }
 };
 
-export const allowRoles = (...roles: string[]) => {
-  return (req: AuthRequest, res: Response, next: NextFunction) => {
+/** Role gate applied after verifyToken. */
+const requireRole =
+  (...roles: string[]) =>
+  (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user || !roles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
-        message: "You are not authorized to perform this action."
+        message: "You are not authorized to perform this action.",
       });
     }
-
     next();
   };
-};
+
+export const verifyCustomer = [verifyToken, requireRole("customer")];
+export const verifyTechnician = [verifyToken, requireRole("technician")];
+export const verifyAdmin = [verifyToken, requireRole("admin")];
+
+/** Any signed-in user. */
+export const requireAuth = verifyToken;
+
+/** Legacy role gate (kept so existing route wiring stays valid). */
+export const allowRoles = requireRole;
