@@ -55,10 +55,11 @@ router.post("/upload-image", requireAuth, allowRoles("technician"), async (req, 
   }
 });
 
-// Public: Get approved services
+// Public: Get approved services with server-side search/filter/sort.
+// Query params: search (title or category), category, mode, sort, limit.
 router.get("/", async (req, res) => {
   try {
-    const { category, search } = req.query;
+    const { search, category, mode, sort, limit } = req.query;
     const filter: Record<string, unknown> = {
       approvalStatus: "approved",
       isAvailable: true,
@@ -68,11 +69,41 @@ router.get("/", async (req, res) => {
       filter.category = category;
     }
 
-    if (typeof search === "string" && search.trim()) {
-      filter.title = { $regex: search.trim(), $options: "i" };
+    if (mode && ["Home Visit", "Shop Drop-off"].includes(String(mode))) {
+      filter.serviceMode = mode;
     }
 
-    const services = await Service.find(filter).sort({ createdAt: -1 });
+    if (typeof search === "string" && search.trim()) {
+      const safe = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      filter.$or = [
+        { title: { $regex: safe, $options: "i" } },
+        { category: { $regex: safe, $options: "i" } },
+      ];
+    }
+
+    let query = Service.find(filter);
+
+    switch (sort) {
+      case "price-asc":
+        query = query.sort({ basePrice: 1, createdAt: -1 });
+        break;
+      case "price-desc":
+        query = query.sort({ basePrice: -1, createdAt: -1 });
+        break;
+      case "oldest":
+        query = query.sort({ createdAt: 1 });
+        break;
+      case "newest":
+      default:
+        query = query.sort({ createdAt: -1 });
+    }
+
+    const cap = Number(limit);
+    if (Number.isFinite(cap) && cap > 0) {
+      query = query.limit(Math.min(Math.floor(cap), 100));
+    }
+
+    const services = await query.lean();
     return res.json({ success: true, count: services.length, services });
   } catch (error) {
     console.error(error);
@@ -132,8 +163,28 @@ router.get("/mine", requireAuth, allowRoles("technician"), async (req: AuthReque
   try {
     const services = await Service.find({ technicianEmail: req.user!.email }).sort({ createdAt: -1 });
     return res.json({ success: true, count: services.length, services });
-  } catch (error) {
+  } catch {
     return res.status(500).json({ success: false, message: "Could not fetch your services." });
+  }
+});
+
+// Admin: View all services pending approval
+router.get("/admin/pending", requireAuth, allowRoles("admin"), async (_req, res) => {
+  try {
+    const services = await Service.find({ approvalStatus: "pending" }).sort({ createdAt: -1 });
+    return res.json({ success: true, count: services.length, services });
+  } catch {
+    return res.status(500).json({ success: false, message: "Could not fetch pending services." });
+  }
+});
+
+// Admin: View every service regardless of approval status
+router.get("/admin/all", requireAuth, allowRoles("admin"), async (_req, res) => {
+  try {
+    const services = await Service.find({}).sort({ createdAt: -1 });
+    return res.json({ success: true, count: services.length, services });
+  } catch {
+    return res.status(500).json({ success: false, message: "Could not fetch services." });
   }
 });
 
@@ -234,13 +285,52 @@ router.patch("/:id", requireAuth, allowRoles("technician"), async (req: AuthRequ
   }
 });
 
-// Admin: View all services pending approval
-router.get("/admin/pending", requireAuth, allowRoles("admin"), async (_req, res) => {
+// Technician: Toggle own service availability
+router.patch("/:id/availability", requireAuth, allowRoles("technician"), async (req: AuthRequest, res) => {
   try {
-    const services = await Service.find({ approvalStatus: "pending" }).sort({ createdAt: -1 });
-    return res.json({ success: true, count: services.length, services });
+    const { id } = req.params;
+
+    if (typeof id !== "string" || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid service ID." });
+    }
+
+    const service = await Service.findOne({ _id: id, technicianEmail: req.user!.email });
+    if (!service) {
+      return res.status(404).json({ success: false, message: "Service not found or you do not own it." });
+    }
+
+    service.isAvailable = !service.isAvailable;
+    await service.save();
+
+    return res.json({
+      success: true,
+      message: service.isAvailable ? "Service is now available." : "Service marked unavailable.",
+      service,
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Could not fetch pending services." });
+    console.error("Availability error:", error);
+    return res.status(500).json({ success: false, message: "Could not update availability." });
+  }
+});
+
+// Technician: Delete own service (bookings keep their records)
+router.delete("/:id", requireAuth, allowRoles("technician"), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    if (typeof id !== "string" || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid service ID." });
+    }
+
+    const service = await Service.findOneAndDelete({ _id: id, technicianEmail: req.user!.email });
+    if (!service) {
+      return res.status(404).json({ success: false, message: "Service not found or you do not own it." });
+    }
+
+    return res.json({ success: true, message: "Service deleted." });
+  } catch (error) {
+    console.error("Delete service error:", error);
+    return res.status(500).json({ success: false, message: "Could not delete service." });
   }
 });
 
