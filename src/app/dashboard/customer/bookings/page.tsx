@@ -24,18 +24,24 @@ export default function CustomerBookingsPage() {
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
-  const loadBookings = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await api.get<{ bookings?: Booking[] }>("/api/bookings/mine");
-      setBookings(data.bookings || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load bookings.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Loader touches state only inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect).
+  const loadBookings = useCallback(
+    () =>
+      api
+        .get<{ bookings?: Booking[] }>("/api/bookings/mine")
+        .then((data) => {
+          setBookings(data.bookings || []);
+          setError("");
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Could not load bookings.");
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    []
+  );
 
   useEffect(() => {
     loadBookings();
@@ -63,7 +69,7 @@ export default function CustomerBookingsPage() {
         `/api/payments/checkout/${booking._id}`
       );
       if (data?.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
+        window.location.assign(data.checkoutUrl);
       } else {
         throw new Error("Stripe did not return a checkout URL.");
       }
@@ -114,7 +120,16 @@ export default function CustomerBookingsPage() {
         </div>
       </div>
 
-      {error && <ErrorState description={error} onRetry={loadBookings} />}
+      {error && (
+        <ErrorState
+          description={error}
+          onRetry={() => {
+            setError("");
+            setLoading(true);
+            void loadBookings();
+          }}
+        />
+      )}
 
       {loading ? (
         <div className="card p-2">

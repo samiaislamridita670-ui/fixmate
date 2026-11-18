@@ -2,21 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
-import { BOOKING_STATUS_META, formatDate, formatDateTime, formatMoney } from "@/lib/constants";
+import { BOOKING_STATUS_META, formatDateTime, formatMoney } from "@/lib/constants";
 import type { Booking, BookingStatus } from "@/lib/types";
 import { PaymentBadge, StatusBadge } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { PageLoader, ErrorState } from "@/components/ui/Feedback";
+import { ErrorState } from "@/components/ui/Feedback";
 import { useToast } from "@/components/Toast";
 
 const TIMELINE: BookingStatus[] = ["requested", "accepted", "in-progress", "completed"];
 
 export default function CustomerBookingDetailsPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const toast = useToast();
 
   const [booking, setBooking] = useState<Booking | null>(null);
@@ -25,19 +24,26 @@ export default function CustomerBookingDetailsPage() {
   const [busy, setBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const loadBooking = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await api.get<{ booking?: Booking }>(`/api/bookings/${id}`);
-      if (!data?.booking) throw new Error("Booking not found.");
-      setBooking(data.booking);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load the booking.");
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  // Loader touches state only inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect).
+  // Loading starts as true for the initial fetch.
+  const loadBooking = useCallback(
+    () =>
+      api
+        .get<{ booking?: Booking }>(`/api/bookings/${id}`)
+        .then((data) => {
+          if (!data?.booking) throw new Error("Booking not found.");
+          setBooking(data.booking);
+          setError("");
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Could not load the booking.");
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    [id]
+  );
 
   useEffect(() => {
     loadBooking();
@@ -66,7 +72,7 @@ export default function CustomerBookingDetailsPage() {
         `/api/payments/checkout/${booking._id}`
       );
       if (!data?.checkoutUrl) throw new Error("Stripe did not return a checkout URL.");
-      window.location.href = data.checkoutUrl;
+      window.location.assign(data.checkoutUrl);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not start checkout.");
       setBusy(false);
@@ -87,7 +93,11 @@ export default function CustomerBookingDetailsPage() {
       <ErrorState
         title="Booking not found"
         description={error || "This booking does not exist or is not yours."}
-        onRetry={loadBooking}
+        onRetry={() => {
+          setError("");
+          setLoading(true);
+          void loadBooking();
+        }}
       />
     );
   }

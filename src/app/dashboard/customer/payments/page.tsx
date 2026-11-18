@@ -14,18 +14,24 @@ export default function CustomerPaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const loadPayments = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await api.get<{ payments?: Payment[] }>("/api/payments/mine");
-      setPayments(data.payments || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load payments.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Loader touches state only inside promise callbacks, so the effect never
+  // sets state synchronously (react-hooks/set-state-in-effect).
+  const loadPayments = useCallback(
+    () =>
+      api
+        .get<{ payments?: Payment[] }>("/api/payments/mine")
+        .then((data) => {
+          setPayments(data.payments || []);
+          setError("");
+        })
+        .catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : "Could not load payments.");
+        })
+        .finally(() => {
+          setLoading(false);
+        }),
+    []
+  );
 
   useEffect(() => {
     loadPayments();
@@ -77,7 +83,16 @@ export default function CustomerPaymentsPage() {
         </div>
       )}
 
-      {error && <ErrorState description={error} onRetry={loadPayments} />}
+      {error && (
+        <ErrorState
+          description={error}
+          onRetry={() => {
+            setError("");
+            setLoading(true);
+            void loadPayments();
+          }}
+        />
+      )}
 
       <section className="table-shell">
         {loading ? (
