@@ -15,6 +15,7 @@ import dns from "node:dns";
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 import mongoose from "mongoose";
+import type { Collection, Document } from "mongodb";
 import { hashPassword } from "better-auth/crypto";
 import Service, { SERVICE_CATEGORIES } from "../src/models/Service.js";
 import Booking from "../src/models/Booking.js";
@@ -245,7 +246,7 @@ const SERVICES: SeedService[] = [
   },
 ];
 
-async function ensureUser(collection: any, user: SeedUser): Promise<string> {
+async function ensureUser(collection: Collection<Document>, user: SeedUser): Promise<string> {
   const existing = await collection.findOne({ email: user.email });
   if (existing) return String(existing._id);
 
@@ -414,5 +415,8 @@ main()
     process.exitCode = 1;
     return mongoose.disconnect();
   });
+
+
+
 
 

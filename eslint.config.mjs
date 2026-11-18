@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Compiled Express output and dependency folders:
+    "server/dist/**",
+    "server/node_modules/**",
   ]),
 ]);
 
