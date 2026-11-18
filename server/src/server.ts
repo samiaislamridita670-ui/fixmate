@@ -8,6 +8,9 @@ import mongoose from "mongoose";
 import servicesRouter from "./routes/services.js";
 import bookingsRouter from "./routes/bookings.js";
 import paymentsRouter, { stripeWebhook } from "./routes/payments.js";
+import usersRouter from "./routes/users.js";
+import adminRouter from "./routes/admin.js";
+import { migrateAuthCollections } from "./lib/migrate.js";
 
 dotenv.config();
 
@@ -27,6 +30,8 @@ app.use(express.json({ limit: "6mb" }));
 app.use("/api/services", servicesRouter);
 app.use("/api/bookings", bookingsRouter);
 app.use("/api/payments", paymentsRouter);
+app.use("/api/users", usersRouter);
+app.use("/api/admin", adminRouter);
 
 app.get("/", (_req, res) => {
   res.json({
@@ -53,6 +58,13 @@ const startServer = async () => {
 
     await mongoose.connect(process.env.MONGODB_URI);
     console.log("MongoDB connected successfully!");
+
+    // Rename legacy singular BetterAuth collections when needed (idempotent).
+    try {
+      await migrateAuthCollections();
+    } catch (migrationError) {
+      console.error("Auth collection migration skipped:", migrationError);
+    }
 
     app.listen(PORT, () => {
       console.log(`FixMate API running at http://localhost:${PORT}`);
