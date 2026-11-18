@@ -1,168 +1,248 @@
 ﻿"use client";
 
+import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
+import { API_BASE, api } from "@/lib/api";
+import { formatMoney } from "@/lib/constants";
+import type { Service } from "@/lib/types";
+import { useToast } from "@/components/Toast";
+import Button from "@/components/ui/Button";
+import { PageLoader } from "@/components/ui/Feedback";
 
-interface Service {
-  _id: string;
-  title: string;
-  category: string;
-  image: string;
-  basePrice: number;
-  technicianName: string;
-}
+const MIN_PROBLEM_LENGTH = 20;
 
-export default function BookingPage() {
+function BookingContent() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { data: session, isPending: sessionPending } = authClient.useSession();
+  const toast = useToast();
+
+  const requestedServiceId = searchParams.get("serviceId") || "";
 
   const [services, setServices] = useState<Service[]>([]);
-  const [serviceId, setServiceId] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const [loadingServices, setLoadingServices] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const [serviceId, setServiceId] = useState(requestedServiceId);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [preferredDate, setPreferredDate] = useState("");
-  const [problemDescription, setProblemDescription] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
-  const [success, setSuccess] = useState(false);
+  const [problem, setProblem] = useState("");
+  const [formError, setFormError] = useState("");
+
+  const role = String((session?.user as { role?: string } | undefined)?.role || "customer");
+  const isBlockedRole = role === "technician" || role === "admin";
+
+  // Prefill identity from the verified session.
+  useEffect(() => {
+    if (!session?.user) return;
+    setName((current) => current || session.user.name || "");
+    setEmail((current) => current || session.user.email || "");
+    setPhone(
+      (current) => current || String((session.user as { phone?: string }).phone || "")
+    );
+  }, [session]);
 
   useEffect(() => {
-    const loadServices = async () => {
-      try {
-        const response = await fetch("http://localhost:5000/api/services");
-        const data = await response.json();
+    if (sessionPending) return;
+    if (!session) {
+      const next = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
+      router.replace(`/login?redirect=${encodeURIComponent(next)}`);
+    }
+  }, [session, sessionPending, router, pathname, searchParams]);
 
-        if (!response.ok || !data.success) {
-          throw new Error(data.message || "Could not load services.");
-        }
-
-        const availableServices: Service[] = data.services || [];
-        setServices(availableServices);
-
-        const params = new URLSearchParams(window.location.search);
-        const selectedId = params.get("serviceId");
-
-        if (selectedId && availableServices.some((service) => service._id === selectedId)) {
-          setServiceId(selectedId);
-        } else if (availableServices.length > 0) {
-          setServiceId(availableServices[0]._id);
-        }
-      } catch (error) {
-        setMessage(error instanceof Error ? error.message : "Could not connect to server.");
-      } finally {
-        setLoading(false);
-      }
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/api/services?limit=100&sort=newest`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        const list: Service[] = Array.isArray(data?.services) ? data.services : [];
+        setServices(list);
+        setServiceId((current) => {
+          if (current && list.some((item) => item._id === current)) return current;
+          if (requestedServiceId && list.some((item) => item._id === requestedServiceId)) {
+            return requestedServiceId;
+          }
+          return list[0]?._id || "";
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setServices([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingServices(false);
+      });
+    return () => {
+      cancelled = true;
     };
+  }, [requestedServiceId]);
 
-    loadServices();
+  const selectedService = useMemo(
+    () => services.find((service) => service._id === serviceId),
+    [services, serviceId]
+  );
+
+  const minDate = useMemo(() => {
+    const date = new Date(Date.now() + 60 * 60 * 1000);
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:00`;
   }, []);
 
-  const selectedService = services.find((service) => service._id === serviceId);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("");
-    setSuccess(false);
+    setFormError("");
 
-    if (!serviceId || !customerPhone.trim() || !address.trim() || !preferredDate || problemDescription.trim().length < 20) {
-      setMessage("Please complete all fields. Problem description must contain at least 20 characters.");
+    if (!serviceId) {
+      setFormError("Please choose a repair service.");
       return;
     }
-
+    if (!name.trim() || !email.trim() || !phone.trim() || !address.trim() || !preferredDate) {
+      setFormError("Please complete every required field.");
+      return;
+    }
+    if (problem.trim().length < MIN_PROBLEM_LENGTH) {
+      setFormError(
+        `Please describe the problem in at least ${MIN_PROBLEM_LENGTH} characters (${problem.trim().length} entered).`
+      );
+      return;
+    }
     if (new Date(preferredDate).getTime() <= Date.now()) {
-      setMessage("Please select a future date and time.");
+      setFormError("Please select a future date and time.");
       return;
     }
 
     setSubmitting(true);
-
     try {
-      const response = await fetch("http://localhost:5000/api/bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          serviceId,
-          customerPhone: customerPhone.trim(),
-          address: address.trim(),
-          preferredDate: new Date(preferredDate).toISOString(),
-          problemDescription: problemDescription.trim(),
-        }),
+      await api.post("/api/bookings", {
+        serviceId,
+        customerName: name.trim(),
+        customerEmail: email.trim(),
+        customerPhone: phone.trim(),
+        address: address.trim(),
+        preferredDate: new Date(preferredDate).toISOString(),
+        problemDescription: problem.trim(),
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          router.push("/login");
-          return;
-        }
-        throw new Error(data.message || "Booking request failed.");
-      }
-
-      setSuccess(true);
-      setMessage("Your booking request has been submitted successfully!");
-      setCustomerPhone("");
+      setSubmitted(true);
+      toast.success("Your repair request has been submitted!");
+      setPhone("");
       setAddress("");
       setPreferredDate("");
-      setProblemDescription("");
+      setProblem("");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Something went wrong.");
+      const message = error instanceof Error ? error.message : "Booking request failed.";
+      setFormError(message);
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
-  };
+  }
 
-  const inputClass =
-    "w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100";
+  if (sessionPending) {
+    return (
+      <main className="flex-1 bg-slate-50">
+        <PageLoader label="Checking your session…" />
+      </main>
+    );
+  }
+
+  if (!session) return null;
+
+  if (isBlockedRole) {
+    return (
+      <main className="flex-1 bg-slate-50 px-5 py-16 sm:px-6">
+        <div className="mx-auto max-w-xl rounded-2xl border border-amber-200 bg-white p-10 text-center shadow-sm">
+          <span className="text-5xl" aria-hidden="true">
+            🚫
+          </span>
+          <h1 className="mt-5 text-2xl font-black text-slate-950">Customers only</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            Repair requests can only be placed by customer accounts. {role === "admin" ? "Admins" : "Technicians"} manage
+            jobs from the dashboard.
+          </p>
+          <Link
+            href={role === "admin" ? "/dashboard/admin" : "/dashboard/technician"}
+            className="btn btn-primary mt-6"
+          >
+            Go to Dashboard
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white px-6 py-5">
-        <nav className="mx-auto flex max-w-6xl items-center justify-between">
-          <Link href="/" className="text-2xl font-black text-blue-700">
-            Fix<span className="text-slate-900">Mate.</span>
-          </Link>
-          <Link href="/services" className="font-semibold text-slate-600 hover:text-blue-700">
-            Browse Services
-          </Link>
-        </nav>
-      </header>
-
-      <section className="bg-slate-950 px-6 py-12 text-center text-white">
-        <p className="font-bold uppercase tracking-widest text-blue-400">
-          Book a Repair
-        </p>
-        <h1 className="mt-3 text-4xl font-black">Request a Service</h1>
-        <p className="mt-3 text-slate-300">
-          Tell us about your problem and schedule your repair.
-        </p>
+    <main className="flex-1 bg-slate-50">
+      <section className="bg-slate-950 px-5 py-12 text-white sm:px-6">
+        <div className="mx-auto max-w-3xl">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-400">
+            Book a repair
+          </p>
+          <h1 className="mt-3 text-3xl font-black sm:text-4xl">Request a service</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300">
+            Tell us what is broken and when you are available. Your technician will confirm the
+            request shortly.
+          </p>
+        </div>
       </section>
 
-      <section className="mx-auto max-w-3xl px-6 py-12">
-        <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-9">
+      <section className="mx-auto max-w-3xl px-5 py-10 sm:px-6">
+        {submitted && (
+          <div
+            className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm leading-6 text-emerald-900"
+            role="status"
+          >
+            <strong className="font-black">Request submitted! </strong>
+            Track its progress from your bookings page.
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Link href="/dashboard/customer/bookings" className="btn btn-primary btn-sm">
+                View My Bookings
+              </Link>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setSubmitted(false)}
+              >
+                Submit another request
+              </button>
+            </div>
+          </div>
+        )}
+
+        <form
+          onSubmit={handleSubmit}
+          className="card card-pad space-y-5 sm:p-8"
+          noValidate
+        >
+          {/* Service picker */}
           <div>
-            <label htmlFor="service" className="mb-2 block text-sm font-bold text-slate-800">
-              Select Repair Service *
+            <label htmlFor="booking-service" className="label">
+              Repair service *
             </label>
-            {loading ? (
-              <p className="text-sm text-slate-500">Loading services...</p>
+            {loadingServices ? (
+              <div className="skeleton h-12 w-full rounded-xl" />
             ) : services.length === 0 ? (
               <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
-                No approved services are currently available. Please visit the services page later.
+                No approved services are available right now. Please check back soon.
               </p>
             ) : (
               <select
-                id="service"
+                id="booking-service"
                 value={serviceId}
                 onChange={(event) => setServiceId(event.target.value)}
+                className="input"
                 required
-                className={inputClass}
               >
                 {services.map((service) => (
                   <option key={service._id} value={service._id}>
-                    {service.title} — ${service.basePrice}
+                    {service.title} — {formatMoney(service.basePrice)} ({service.serviceMode})
                   </option>
                 ))}
               </select>
@@ -170,108 +250,165 @@ export default function BookingPage() {
           </div>
 
           {selectedService && (
-            <div className="flex items-center gap-4 rounded-xl bg-blue-50 p-4">
+            <div className="flex items-center gap-4 rounded-xl border border-emerald-100 bg-emerald-50/70 p-4">
               {selectedService.image && (
                 <img
                   src={selectedService.image}
-                  alt={selectedService.title}
-                  className="h-20 w-20 rounded-lg object-cover"
+                  alt=""
+                  className="h-16 w-16 rounded-lg object-cover"
                 />
               )}
-              <div>
-                <p className="font-bold text-slate-900">{selectedService.title}</p>
-                <p className="text-sm text-slate-600">{selectedService.category}</p>
-                <p className="mt-1 font-bold text-blue-700">${selectedService.basePrice}</p>
-                <p className="text-sm text-slate-600">Technician: {selectedService.technicianName}</p>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black text-slate-900">
+                  {selectedService.title}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {selectedService.category} · {selectedService.serviceArea} ·{" "}
+                  {selectedService.estimatedDuration}
+                </p>
+                <p className="mt-1 text-sm font-black text-emerald-700">
+                  From {formatMoney(selectedService.basePrice)} · technician{" "}
+                  {selectedService.technicianName}
+                </p>
               </div>
             </div>
           )}
 
-          <div>
-            <label htmlFor="phone" className="mb-2 block text-sm font-bold text-slate-800">
-              Contact Phone Number *
-            </label>
-            <input
-              id="phone"
-              type="tel"
-              value={customerPhone}
-              onChange={(event) => setCustomerPhone(event.target.value)}
-              placeholder="Enter your phone number"
-              required
-              className={inputClass}
-            />
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label htmlFor="booking-name" className="label">
+                Full name *
+              </label>
+              <input
+                id="booking-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                className="input"
+                placeholder="Your full name"
+                required
+                autoComplete="name"
+              />
+            </div>
+            <div>
+              <label htmlFor="booking-email" className="label">
+                Email address *
+              </label>
+              <input
+                id="booking-email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className="input"
+                placeholder="you@example.com"
+                required
+                autoComplete="email"
+              />
+            </div>
+            <div>
+              <label htmlFor="booking-phone" className="label">
+                Phone number *
+              </label>
+              <input
+                id="booking-phone"
+                type="tel"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                className="input"
+                placeholder="+880 1XXXXXXXXX"
+                required
+                autoComplete="tel"
+              />
+            </div>
+            <div>
+              <label htmlFor="booking-date" className="label">
+                Preferred date & time *
+              </label>
+              <input
+                id="booking-date"
+                type="datetime-local"
+                value={preferredDate}
+                min={minDate}
+                onChange={(event) => setPreferredDate(event.target.value)}
+                className="input"
+                required
+              />
+            </div>
           </div>
 
           <div>
-            <label htmlFor="address" className="mb-2 block text-sm font-bold text-slate-800">
-              Full Repair Address *
+            <label htmlFor="booking-address" className="label">
+              Repair address *
             </label>
             <textarea
-              id="address"
+              id="booking-address"
               value={address}
               onChange={(event) => setAddress(event.target.value)}
-              placeholder="Enter house, road, area and city"
-              rows={3}
+              rows={2}
+              className="input"
+              placeholder="House, road, area and city"
               required
-              className={inputClass}
             />
           </div>
 
           <div>
-            <label htmlFor="date" className="mb-2 block text-sm font-bold text-slate-800">
-              Preferred Date and Time *
-            </label>
-            <input
-              id="date"
-              type="datetime-local"
-              value={preferredDate}
-              onChange={(event) => setPreferredDate(event.target.value)}
-              required
-              className={inputClass}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="problem" className="mb-2 block text-sm font-bold text-slate-800">
-              Describe Your Problem *
+            <label htmlFor="booking-problem" className="label">
+              Problem description *
             </label>
             <textarea
-              id="problem"
-              value={problemDescription}
-              onChange={(event) => setProblemDescription(event.target.value)}
-              placeholder="Explain the device problem in at least 20 characters..."
+              id="booking-problem"
+              value={problem}
+              onChange={(event) => setProblem(event.target.value)}
               rows={5}
-              minLength={20}
               maxLength={1000}
+              className="input"
+              placeholder="Explain the issue, when it started and anything the technician should know…"
               required
-              className={inputClass}
             />
-            <p className="mt-1 text-right text-xs text-slate-500">
-              {problemDescription.length}/1000 characters (minimum 20)
+            <p
+              className={`mt-1.5 text-xs ${
+                problem.trim().length >= MIN_PROBLEM_LENGTH ? "text-emerald-600" : "text-slate-500"
+              }`}
+            >
+              {problem.trim().length}/1000 characters (minimum {MIN_PROBLEM_LENGTH})
             </p>
           </div>
 
-          {message && (
-            <div className={`rounded-xl p-4 text-sm font-semibold ${
-              success ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-            }`}>
-              {message}
+          {formError && (
+            <div
+              className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700"
+              role="alert"
+            >
+              {formError}
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading || submitting || services.length === 0}
-            className="w-full rounded-xl bg-blue-700 px-6 py-4 font-bold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {submitting ? "Submitting Request..." : "Confirm Booking Request"}
-          </button>
-
-          <p className="text-center text-xs text-slate-500">
-            Booking requests require customer login. Payment is available after service completion.
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs leading-5 text-slate-500">
+              Requests are free — payment happens only after the repair is completed.
+            </p>
+            <Button type="submit" loading={submitting} size="lg" disabled={!services.length}>
+              {submitting ? "Submitting…" : "Confirm Booking Request"}
+            </Button>
+          </div>
         </form>
       </section>
     </main>
+  );
+}
+
+export default function BookingPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex flex-1 items-center justify-center bg-slate-50">
+          <div className="flex flex-col items-center gap-3">
+            <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-emerald-600 border-t-transparent" />
+            <p className="text-sm font-semibold text-slate-500">Loading booking form…</p>
+          </div>
+        </main>
+      }
+    >
+      <BookingContent />
+    </Suspense>
   );
 }
