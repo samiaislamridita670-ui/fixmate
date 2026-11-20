@@ -148,7 +148,7 @@ export default function AdminServicesPage() {
             <article key={service._id} className="card overflow-hidden">
               <div className="relative h-36 bg-slate-100">
                 {service.image ? (
-                  <img src={service.image} alt="" className="h-full w-full object-cover" />
+                  <img onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/images/image-fallback.svg"; }} src={service.image} alt="" className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full items-center justify-center text-4xl">🔧</div>
                 )}
@@ -214,3 +214,4 @@ export default function AdminServicesPage() {
     </div>
   );
 }
+

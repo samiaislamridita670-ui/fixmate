@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { authClient } from "@/lib/auth-client";
 import { clearAuthToken } from "@/lib/api";
-import { dashboardPathForRole } from "@/lib/constants";
 import Button from "@/components/ui/Button";
 
 function LoginContent() {
@@ -23,8 +22,7 @@ function LoginContent() {
   const { data: session, isPending } = authClient.useSession();
   useEffect(() => {
     if (isPending || !session?.user) return;
-    const role = String((session.user as { role?: string }).role || "customer");
-    router.replace(redirectTo || dashboardPathForRole(role));
+    router.replace("/");
   }, [session, isPending, router, redirectTo]);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -42,12 +40,7 @@ function LoginContent() {
 
       clearAuthToken();
 
-      const fresh = await authClient.getSession();
-      const role = String(
-        (fresh.data?.user as { role?: string } | undefined)?.role || "customer"
-      );
-
-      router.push(redirectTo || dashboardPathForRole(role));
+      router.push("/");
       router.refresh();
     } catch {
       setError("Login failed. Please check your connection and try again.");
@@ -56,6 +49,18 @@ function LoginContent() {
     }
   }
 
+  async function handleSocialLogin(provider: "google" | "github") {
+    setError("");
+    setLoading(true);
+    try {
+      const result = await authClient.signIn.social({ provider, callbackURL: "/" });
+      if (result.error) setError(result.error.message || "Social sign-in failed.");
+    } catch {
+      setError("Social sign-in failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
   return (
     <main className="flex flex-1 items-center justify-center bg-slate-950 px-5 py-14">
       <div className="w-full max-w-md">
@@ -76,8 +81,15 @@ function LoginContent() {
           <p className="mt-2 text-sm text-slate-500">
             Sign in to manage your bookings, services and jobs.
           </p>
+          <div className="mt-7 grid grid-cols-2 gap-3">
+            <button type="button" onClick={() => handleSocialLogin("google")} disabled={loading} className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Google</button>
+            <button type="button" onClick={() => handleSocialLogin("github")} disabled={loading} className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">GitHub</button>
+          </div>
+          <div className="my-5 flex items-center gap-3 text-xs text-slate-400">
+            <span className="h-px flex-1 bg-slate-200" />OR CONTINUE WITH EMAIL<span className="h-px flex-1 bg-slate-200" />
+          </div>
 
-          <form onSubmit={handleLogin} className="mt-7 space-y-5" noValidate>
+          <form onSubmit={handleLogin} className="space-y-5" noValidate>
             <div>
               <label htmlFor="login-email" className="label">
                 Email address
@@ -158,3 +170,7 @@ export default function LoginPage() {
     </Suspense>
   );
 }
+
+
+
+

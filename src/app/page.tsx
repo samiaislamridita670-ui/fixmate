@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -218,7 +218,7 @@ export default function HomePage() {
                 >
                   <div className="relative h-48 overflow-hidden bg-slate-100">
                     {service.image ? (
-                      <img
+                      <img onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/images/image-fallback.svg"; }}
                         src={service.image}
                         alt={service.title}
                         className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
@@ -454,3 +454,4 @@ export default function HomePage() {
     </main>
   );
 }
+

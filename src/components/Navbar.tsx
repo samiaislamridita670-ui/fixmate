@@ -77,7 +77,7 @@ function NavbarContent() {
   }
 
   const avatar = user?.image ? (
-    <img src={user.image} alt="" className="h-8 w-8 rounded-full object-cover" />
+    <img onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/images/image-fallback.svg"; }} src={user.image} alt="" className="h-8 w-8 rounded-full object-cover" />
   ) : (
     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-xs font-black text-emerald-700">
       {initials(user?.name)}
@@ -258,3 +258,5 @@ export default function Navbar() {
     </Suspense>
   );
 }
+
+

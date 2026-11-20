@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Shared API helper for the FixMate frontend.
  *
  * Every request to the Express API carries a short-lived JWT obtained from
@@ -102,7 +102,7 @@ export async function apiFetch<T = unknown>(path: string, options: ApiOptions = 
   if (!response.ok) {
     if (response.status === 401) clearAuthToken();
     const message =
-      (typeof data?.message === "string" && data.message) ||
+      (typeof data?.message === "string" && data.message) + (typeof data?.diagnostic === "string" ? " [" + data.diagnostic + "]" : "") ||
       (response.status === 401
         ? "Your session has expired. Please sign in again."
         : `Request failed with status ${response.status}.`);
@@ -124,3 +124,4 @@ export const api = {
   delete: <T = unknown>(path: string, options?: ApiOptions) =>
     apiFetch<T>(path, { ...options, method: "DELETE" }),
 };
+

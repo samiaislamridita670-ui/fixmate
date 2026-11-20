@@ -168,7 +168,7 @@ export default function ProfilePage() {
         <section className="card card-pad self-start text-center">
           <div className="relative mx-auto h-28 w-28">
             {image ? (
-              <img
+              <img onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/images/image-fallback.svg"; }}
                 src={image}
                 alt=""
                 className="h-28 w-28 rounded-full border-4 border-emerald-100 object-cover"
@@ -327,3 +327,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+

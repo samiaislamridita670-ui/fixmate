@@ -112,7 +112,7 @@ export default function AdminApprovalsPage() {
               <div className="grid gap-5 p-5 md:grid-cols-[220px_1fr]">
                 <div className="h-40 overflow-hidden rounded-xl bg-slate-100 md:h-full">
                   {service.image ? (
-                    <img src={service.image} alt="" className="h-full w-full object-cover" />
+                    <img onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/images/image-fallback.svg"; }} src={service.image} alt="" className="h-full w-full object-cover" />
                   ) : (
                     <div className="flex h-full items-center justify-center text-4xl">🔧</div>
                   )}
@@ -192,3 +192,4 @@ export default function AdminApprovalsPage() {
     </div>
   );
 }
+

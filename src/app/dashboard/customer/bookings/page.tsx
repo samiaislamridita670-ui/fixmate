@@ -162,7 +162,7 @@ export default function CustomerBookingsPage() {
                   <div className="flex min-w-0 flex-1 gap-4">
                     <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-slate-100">
                       {booking.serviceImage ? (
-                        <img
+                        <img onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/images/image-fallback.svg"; }}
                           src={booking.serviceImage}
                           alt=""
                           className="h-full w-full object-cover"
@@ -265,3 +265,4 @@ export default function CustomerBookingsPage() {
     </div>
   );
 }
+

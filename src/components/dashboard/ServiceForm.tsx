@@ -262,7 +262,7 @@ export default function ServiceForm({
           )}
           {form.image && (
             <div className="mt-3 flex items-center gap-3">
-              <img
+              <img onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/images/image-fallback.svg"; }}
                 src={form.image}
                 alt="Service preview"
                 className="h-24 w-32 rounded-lg border border-slate-200 object-cover"
@@ -302,3 +302,4 @@ export default function ServiceForm({
     </form>
   );
 }
+

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
@@ -243,7 +243,7 @@ function BookingContent() {
           {selectedService && (
             <div className="flex items-center gap-4 rounded-xl border border-emerald-100 bg-emerald-50/70 p-4">
               {selectedService.image && (
-                <img
+                <img onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/images/image-fallback.svg"; }}
                   src={selectedService.image}
                   alt=""
                   className="h-16 w-16 rounded-lg object-cover"
@@ -402,3 +402,5 @@ export default function BookingPage() {
     </Suspense>
   );
 }
+
+

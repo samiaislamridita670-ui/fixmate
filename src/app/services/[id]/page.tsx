@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
@@ -121,7 +121,7 @@ function ServiceDetailsContent() {
           <div className="card overflow-hidden self-start">
             <div className="aspect-[4/3] bg-slate-100">
               {service.image ? (
-                <img
+                <img onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/images/image-fallback.svg"; }}
                   src={service.image}
                   alt={service.title}
                   className="h-full w-full object-cover"

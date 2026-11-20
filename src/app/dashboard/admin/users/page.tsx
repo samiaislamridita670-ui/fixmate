@@ -180,7 +180,7 @@ export default function AdminUsersPage() {
                     <td className="table-td">
                       <div className="flex items-center gap-3">
                         {user.image ? (
-                          <img
+                          <img onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/images/image-fallback.svg"; }}
                             src={user.image}
                             alt=""
                             className="h-9 w-9 rounded-full object-cover"
@@ -261,3 +261,4 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+

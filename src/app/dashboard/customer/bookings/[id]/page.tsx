@@ -188,7 +188,7 @@ export default function CustomerBookingDetailsPage() {
           <div className="mt-4 flex gap-4">
             <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-slate-100">
               {booking.serviceImage ? (
-                <img src={booking.serviceImage} alt="" className="h-full w-full object-cover" />
+                <img onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/images/image-fallback.svg"; }} src={booking.serviceImage} alt="" className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full items-center justify-center text-3xl">🔧</div>
               )}
