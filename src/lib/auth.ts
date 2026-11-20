@@ -67,8 +67,15 @@ export const auth = betterAuth({
       },
     },
   },
-  trustedOrigins: ["http://localhost:3000", "http://localhost:3001"],
+  trustedOrigins: [
+    process.env.BETTER_AUTH_URL,
+    process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
+    "https://fixmate-gamma.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:3001",
+  ].filter((origin): origin is string => Boolean(origin)),
 });
+
 
 
 
