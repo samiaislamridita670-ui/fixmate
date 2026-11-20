@@ -187,3 +187,26 @@ Health check: `GET /api/health`.
 - **`bad auth : authentication failed`** — the `MONGODB_URI` credentials are wrong or the Atlas IP access list does not include your machine.
 - **Webhook returns 400** — `STRIPE_WEBHOOK_SECRET` does not match the endpoint Stripe is signing with.
 - **Services page shows the error state** — the API is unreachable; start the backend and press Retry.
+
+---
+
+## Live Production Links
+
+| Resource | URL |
+| --- | --- |
+| Live Frontend | https://fixmate-gamma.vercel.app |
+| Backend API | https://fixmate-server-h75l.onrender.com |
+| GitHub Repository | https://github.com/samiaislamridita670-ui/fixmate |
+
+### Live Authentication
+
+- Customer registration: `/sign-up`
+- Customer login: `/sign-in`
+- Technician registration: `/sign-up` (select Technician)
+- Admin dashboard: `/dashboard/admin`
+- Technician dashboard: `/dashboard/technician`
+- Customer dashboard: `/dashboard/customer`
+
+New Customer and Technician registrations have been verified successfully
+against the production deployment.
+
