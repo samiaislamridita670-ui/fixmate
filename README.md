@@ -1,4 +1,4 @@
-# FixMate — Smart Device & Home Appliance Repair Platform
+﻿# FixMate — Smart Device & Home Appliance Repair Platform
 
 A full-stack marketplace connecting households with verified repair technicians.
 Customers browse approved services and submit repair requests; technicians
@@ -196,6 +196,7 @@ Health check: `GET /api/health`.
 | --- | --- |
 | Live Frontend | https://fixmate-gamma.vercel.app |
 | Backend API | https://fixmate-server-h75l.onrender.com |
+| Backend Health Check | https://fixmate-server-h75l.onrender.com/api/health |
 | GitHub Repository | https://github.com/samiaislamridita670-ui/fixmate |
 
 ### Live Authentication
@@ -209,4 +210,5 @@ Health check: `GET /api/health`.
 
 New Customer and Technician registrations have been verified successfully
 against the production deployment.
+
 
