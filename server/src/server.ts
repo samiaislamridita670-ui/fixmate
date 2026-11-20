@@ -1,9 +1,9 @@
-﻿import dns from "node:dns";
+﻿import "dotenv/config";
+import dns from "node:dns";
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import mongoose from "mongoose";
 import servicesRouter from "./routes/services.js";
 import bookingsRouter from "./routes/bookings.js";
@@ -12,14 +12,17 @@ import usersRouter from "./routes/users.js";
 import adminRouter from "./routes/admin.js";
 import { migrateAuthCollections } from "./lib/migrate.js";
 
-dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 
+const allowedOrigins = process.env.NODE_ENV === "production"
+  ? [process.env.CLIENT_URL].filter((origin): origin is string => Boolean(origin))
+  : [process.env.CLIENT_URL || "http://localhost:3000", "http://localhost:3000", "http://localhost:3001"];
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:3001",
-  credentials: true
+  origin: allowedOrigins,
+  credentials: true,
 }));
 
 // Stripe webhook must receive the raw request body.
@@ -76,3 +79,9 @@ const startServer = async () => {
 };
 
 startServer();
+
+
+
+
+
+

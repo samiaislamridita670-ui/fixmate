@@ -22,7 +22,7 @@ const serviceSchema = new Schema<IService>({
   category: { type: String, enum: SERVICE_CATEGORIES, required: true },
   description: { type: String, required: true },
   image: { type: String, required: true },
-  basePrice: { type: Number, required: true, min: 0 },
+  basePrice: { type: Number, required: true, min: 0.01 },
   estimatedDuration: { type: String, required: true },
   serviceMode: { type: String, enum: ["Home Visit", "Shop Drop-off"], required: true },
   serviceArea: { type: String, required: true },
@@ -37,3 +37,5 @@ serviceSchema.index({ technicianEmail: 1 });
 
 const Service: Model<IService> = mongoose.models.Service as Model<IService> || mongoose.model<IService>("Service", serviceSchema);
 export default Service;
+
+

@@ -131,7 +131,7 @@ router.post("/checkout/:bookingId", requireAuth, allowRoles("customer"), async (
       return res.status(400).json({ success: false, message: "Invalid payment amount." });
     }
 
-    const clientUrl = process.env.CLIENT_URL || "http://localhost:3001";
+    const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -230,15 +230,27 @@ export const stripeWebhook = async (req: Request, res: Response) => {
           return res.status(400).send("Payment amount or currency mismatch.");
         }
 
-        if (booking.paymentStatus !== "paid") {
-          const existingPayment = await Payment.findOne({
-            $or: [
-              { bookingId },
-              { stripeSessionId: session.id }
-            ]
-          });
+        if (
+          session.mode !== "payment" ||
+          session.status !== "complete" ||
+          typeof session.payment_intent !== "string"
+        ) {
+          return res.status(400).send("Invalid completed payment session.");
+        }
 
-          if (!existingPayment) {
+        const existingByBooking = await Payment.findOne({ bookingId });
+        const existingBySession = await Payment.findOne({ stripeSessionId: session.id });
+
+        if (existingBySession && existingBySession.bookingId !== bookingId) {
+          return res.status(409).send("Stripe session is already linked to another booking.");
+        }
+
+        if (existingByBooking && existingByBooking.stripeSessionId !== session.id) {
+          return res.status(409).send("Booking already has a different payment session.");
+        }
+
+        if (!existingByBooking && !existingBySession) {
+          try {
             await Payment.create({
               bookingId,
               serviceTitle: booking.serviceTitle,
@@ -246,17 +258,28 @@ export const stripeWebhook = async (req: Request, res: Response) => {
               customerEmail: booking.customerEmail,
               technicianName: booking.technicianName,
               technicianEmail: booking.technicianEmail,
-              amount: (session.amount_total || 0) / 100,
+              amount: session.amount_total / 100,
               currency: "usd",
-              transactionId: typeof session.payment_intent === "string"
-                ? session.payment_intent
-                : session.id,
+              transactionId: session.payment_intent,
               stripeSessionId: session.id,
               paymentStatus: "paid",
               paidAt: new Date()
             });
-          }
+          } catch (createError) {
+            // A concurrent duplicate webhook may have created the record.
+            const duplicatePayment = await Payment.findOne({
+              bookingId,
+              stripeSessionId: session.id
+            });
 
+            if (!duplicatePayment) {
+              throw createError;
+            }
+          }
+        }
+
+        // Save booking only after the payment record exists.
+        if (booking.paymentStatus !== "paid") {
           booking.paymentStatus = "paid";
           await booking.save();
         }
@@ -271,4 +294,13 @@ export const stripeWebhook = async (req: Request, res: Response) => {
 };
 
 export default router;
+
+
+
+
+
+
+
+
+
 

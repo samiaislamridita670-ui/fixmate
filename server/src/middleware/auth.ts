@@ -31,11 +31,12 @@ export const verifyToken = async (
     req.user = user;
     next();
   } catch (error) {
+    console.error("JWT VERIFICATION ERROR:", error);
     const message =
       error instanceof Error && /expired/i.test(error.message)
         ? "Your session has expired. Please sign in again."
         : "Please sign in to continue.";
-    return res.status(401).json({ success: false, message });
+    return res.status(401).json({ success: false, message, diagnostic: error instanceof Error ? error.message : String(error) });
   }
 };
 
@@ -61,3 +62,7 @@ export const requireAuth = verifyToken;
 
 /** Legacy role gate (kept so existing route wiring stays valid). */
 export const allowRoles = requireRole;
+
+
+
+

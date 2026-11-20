@@ -99,7 +99,7 @@ interface SeedService {
 
 // Public placeholder images (ImgBB-hosted style URLs are replaced by real
 // uploads when technicians edit their services in the dashboard).
-const IMG = (id: string) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=800&q=80`;
+const IMG = (_id: string) => "https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&w=800&q=80";
 
 const SERVICES: SeedService[] = [
   {
@@ -327,6 +327,9 @@ async function main() {
     console.log(`  + ${(service.approvalStatus ?? "approved").padEnd(8)} ${service.title}`);
   }
 
+  await Service.updateMany({}, { $set: { image: IMG("fixed") } });
+  await Booking.updateMany({}, { $set: { serviceImage: IMG("fixed") } });
+  console.log("Updated existing service and booking images.");
   const existingBookings = await Booking.countDocuments();
   if (existingBookings > 0) {
     console.log(`\nBookings already exist (${existingBookings}) — skipping booking seed.`);
@@ -415,6 +418,7 @@ main()
     process.exitCode = 1;
     return mongoose.disconnect();
   });
+
 
 
 
